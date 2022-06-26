@@ -6,42 +6,62 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 )
 
-func getQuiz(filePath *string) [][]string {
-	file, _ := os.Open(*filePath)
-
-	records, err := csv.NewReader(file).ReadAll()
-
-	if err != err {
-		log.Fatal(err)
-
-	}
-
-	return records
-
-}
-
-var quizFile = flag.String("quiz", "problems.csv", "File path to quiz. Must be in csv format with no headers and two fields. Field #1 is the question Field #2 is the answer.")
-
 func main() {
-
+	quizFile := flag.String("quiz", "problems.csv", "File path to quiz. Must be in csv format with no headers and two fields. Field #1 is the question Field #2 is the answer.")
+	timeLimit := flag.Int("limit", 30, "the time limit for the quiz in seconds.")
 	flag.Parse()
+
 	correct := 0
+	quiz := getQuiz(quizFile)
 
-	problems := getQuiz(quizFile)
-	for i, problem := range problems {
-		var userAnswer string
-		question := problem[0]
-		correctAnswer := problem[1]
+	timer := time.NewTimer(time.Duration(*timeLimit) * time.Second)
 
-		fmt.Printf("Problem #%d: %s = ", i+1, question)
-		fmt.Scanf("%s = ", &userAnswer)
-
-		if userAnswer == correctAnswer {
-			correct++
+	for i, p := range quiz {
+		fmt.Printf("Problem #%d: %s = ", i+1, p.q)
+		answerCh := make(chan string)
+		go func() {
+			var answer string
+			fmt.Scanf("%s = ", &answer)
+			answerCh <- answer
+		}()
+		select {
+		case <-timer.C:
+			fmt.Println()
+			goto End
+		case answer := <-answerCh:
+			if answer == p.a {
+				correct++
+			}
 		}
 	}
+End:
+	fmt.Printf("You scored %d out of %d", correct, len(quiz))
+}
 
-	fmt.Printf("You scored %d out of %d", correct, len(problems))
+type problem struct {
+	q string
+	a string
+}
+
+func parseProblems(lines [][]string) []problem {
+	problems := make([]problem, len(lines))
+
+	for i, line := range lines {
+		problems[i] = problem{q: line[0], a: line[1]}
+	}
+	return problems
+}
+
+func getQuiz(path *string) []problem {
+	file, _ := os.Open(*path)
+	lines, err := csv.NewReader(file).ReadAll()
+	if err != err {
+		log.Fatal(err)
+	}
+
+	return parseProblems(lines)
+
 }
